@@ -14,6 +14,7 @@ const DEFAULT_REGION = (process.env.REGION_FILTER || '').toLowerCase().trim();
 const CACHE_TTL_MS = (Number(process.env.CACHE_TTL_HOURS) || 12) * 60 * 60 * 1000;
 const NUTHATCH_URL = 'https://nuthatch.lastelm.software/v2/birds';
 const CHOICES = 4;
+const DIFFICULTIES = new Set(['easy', 'medium', 'hard']);
 
 if (!API_KEY) {
   console.error('[birdle] NUTHATCH_API_KEY manquante. Renseigne-la dans .env');
@@ -107,6 +108,8 @@ async function refreshPool() {
   const pool = unique.map((b) => ({
     name: b.name,
     sciName: b.sciName || '',
+    family: b.family || '',
+    order: b.order || '',
     status: b.status || '',
     region: Array.isArray(b.region) ? b.region : [],
     image: b.images[0],
@@ -154,8 +157,42 @@ function sample(arr, n) {
   return res;
 }
 
-function buildQuestion(pool) {
-  const [correct, ...decoys] = sample(pool, CHOICES);
+function pickCorrect(pool, difficulty) {
+  if (difficulty === 'hard') {
+    const counts = new Map();
+    for (const b of pool) {
+      if (b.family) counts.set(b.family, (counts.get(b.family) || 0) + 1);
+    }
+    const eligible = pool.filter((b) => b.family && counts.get(b.family) >= CHOICES);
+    if (eligible.length) return sample(eligible, 1)[0];
+  }
+  return sample(pool, 1)[0];
+}
+
+function pickDecoys(pool, correct, difficulty) {
+  const others = pool.filter((b) => b.name !== correct.name);
+  let candidates = others;
+  if (difficulty === 'easy') {
+    candidates = others.filter((b) => b.family && correct.family && b.family !== correct.family);
+  } else if (difficulty === 'hard') {
+    candidates = others.filter((b) => b.family && correct.family && b.family === correct.family);
+    if (candidates.length < CHOICES - 1) {
+      const sameOrder = others.filter(
+        (b) => b.order && correct.order && b.order === correct.order && b.family !== correct.family,
+      );
+      candidates = candidates.concat(sameOrder);
+    }
+  }
+  if (candidates.length < CHOICES - 1) {
+    const have = new Set(candidates.map((b) => b.name));
+    candidates = candidates.concat(others.filter((b) => !have.has(b.name)));
+  }
+  return sample(candidates, CHOICES - 1);
+}
+
+function buildQuestion(pool, difficulty) {
+  const correct = pickCorrect(pool, difficulty);
+  const decoys = pickDecoys(pool, correct, difficulty);
   const options = [correct, ...decoys];
   for (let i = options.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -163,6 +200,7 @@ function buildQuestion(pool) {
   }
   return {
     image: correct.image,
+    difficulty,
     options: options.map((o) => ({ name: o.frName, sci: o.sciName })),
     answerIndex: options.indexOf(correct),
     correct: {
@@ -227,8 +265,9 @@ app.get('/api/quiz', async (req, res) => {
     if (pool.length < CHOICES) {
       return res.status(400).json({ error: "Pas assez d'oiseaux dans cette region." });
     }
+    const difficulty = DIFFICULTIES.has(req.query.difficulty) ? req.query.difficulty : 'medium';
     res.set('Cache-Control', 'no-store');
-    res.json(buildQuestion(pool));
+    res.json(buildQuestion(pool, difficulty));
   } catch (err) {
     console.error('[birdle] /api/quiz', err.message);
     res.status(502).json({ error: 'Impossible de charger les oiseaux pour le moment.' });

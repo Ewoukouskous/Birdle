@@ -13,12 +13,16 @@ const REGION_FR = {
   'oceania': 'Océanie',
 };
 
+const DIFFICULTY_FR = { easy: 'Facile', medium: 'Moyen', hard: 'Difficile' };
+
 const el = {
   regionView: document.getElementById('region-view'),
+  difficultyView: document.getElementById('difficulty-view'),
   gameView: document.getElementById('game-view'),
   regions: document.getElementById('regions'),
   regionError: document.getElementById('region-error'),
-  regionLabel: document.getElementById('region-label'),
+  difficultySub: document.getElementById('difficulty-sub'),
+  gameLabel: document.getElementById('game-label'),
   back: document.getElementById('back-btn'),
   scoreboard: document.getElementById('scoreboard'),
   img: document.getElementById('bird-img'),
@@ -31,7 +35,7 @@ const el = {
   streak: document.getElementById('streak'),
 };
 
-const state = { score: 0, streak: 0, region: '', question: null, locked: false };
+const state = { score: 0, streak: 0, region: '', regionLabel: '', difficulty: 'medium', view: 'region' };
 
 function frRegion(name) {
   return REGION_FR[String(name).toLowerCase()] || name;
@@ -43,6 +47,19 @@ function showError(node, msg) {
   node.classList.remove('hidden');
 }
 
+function showView(view) {
+  state.view = view;
+  for (const v of ['region', 'difficulty', 'game']) {
+    const node = el[v + 'View'];
+    const active = v === view;
+    node.classList.toggle('hidden', !active);
+    node.classList.toggle('flex', active);
+  }
+  el.back.classList.toggle('hidden', view === 'region');
+  el.scoreboard.classList.toggle('hidden', view !== 'game');
+  el.scoreboard.classList.toggle('flex', view === 'game');
+}
+
 function regionButton(label, sub, region, displayLabel) {
   const btn = document.createElement('button');
   btn.type = 'button';
@@ -52,7 +69,7 @@ function regionButton(label, sub, region, displayLabel) {
     'focus:outline-none focus:ring-2 focus:ring-moss-400';
   const count = sub ? `<span class="ml-3 shrink-0 text-xs text-stone-500">${sub}</span>` : '';
   btn.innerHTML = `<span>${label}</span>${count}`;
-  btn.addEventListener('click', () => startGame(region, displayLabel));
+  btn.addEventListener('click', () => chooseRegion(region, displayLabel));
   return btn;
 }
 
@@ -75,32 +92,31 @@ async function loadRegions() {
   }
 }
 
-function startGame(region, displayLabel) {
+function chooseRegion(region, displayLabel) {
   state.region = region;
+  state.regionLabel = displayLabel;
+  el.difficultySub.textContent = `Région : ${displayLabel}`;
+  showView('difficulty');
+}
+
+function chooseDifficulty(difficulty) {
+  state.difficulty = difficulty;
   state.score = 0;
   state.streak = 0;
   el.score.textContent = '0';
   el.streak.textContent = '0';
-  el.regionLabel.textContent = displayLabel ? `(${displayLabel})` : '';
-  el.regionView.classList.add('hidden');
-  el.regionView.classList.remove('flex');
-  el.gameView.classList.remove('hidden');
-  el.gameView.classList.add('flex');
-  el.back.classList.remove('hidden');
-  el.scoreboard.classList.remove('hidden');
-  el.scoreboard.classList.add('flex');
+  el.gameLabel.textContent = `(${state.regionLabel} · ${DIFFICULTY_FR[difficulty]})`;
+  showView('game');
   loadQuestion();
 }
 
-function backToRegions() {
-  el.gameView.classList.add('hidden');
-  el.gameView.classList.remove('flex');
-  el.regionView.classList.remove('hidden');
-  el.regionView.classList.add('flex');
-  el.back.classList.add('hidden');
-  el.scoreboard.classList.add('hidden');
-  el.scoreboard.classList.remove('flex');
-  loadRegions();
+function goBack() {
+  if (state.view === 'game') {
+    showView('difficulty');
+  } else if (state.view === 'difficulty') {
+    showView('region');
+    loadRegions();
+  }
 }
 
 function makeButton(option, index) {
@@ -120,16 +136,18 @@ function makeButton(option, index) {
 }
 
 async function loadQuestion() {
-  state.locked = false;
   showError(el.error, null);
   el.feedback.classList.add('hidden');
   el.next.classList.add('hidden');
   el.choices.innerHTML = '';
   el.img.classList.add('opacity-0');
   el.skeleton.classList.remove('hidden');
+  state.locked = false;
 
   try {
-    const res = await fetch('/api/quiz?region=' + encodeURIComponent(state.region));
+    const url = '/api/quiz?region=' + encodeURIComponent(state.region) +
+      '&difficulty=' + encodeURIComponent(state.difficulty);
+    const res = await fetch(url);
     if (!res.ok) throw new Error('Réponse ' + res.status);
     const q = await res.json();
     state.question = q;
@@ -185,6 +203,10 @@ function onAnswer(index) {
   el.next.focus();
 }
 
+document.querySelectorAll('.diff-btn').forEach((b) => {
+  b.addEventListener('click', () => chooseDifficulty(b.dataset.difficulty));
+});
 el.next.addEventListener('click', loadQuestion);
-el.back.addEventListener('click', backToRegions);
+el.back.addEventListener('click', goBack);
+showView('region');
 loadRegions();
