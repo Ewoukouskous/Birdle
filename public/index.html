@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="fr" class="h-full">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Birdle</title>
+  <meta name="description" content="Un mini-jeu pour reconnaître les oiseaux d'Europe." />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="icon"
+    href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%90%A6%3C/text%3E%3C/svg%3E" />
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+          colors: {
+            moss: { 50: '#f4f7f0', 100: '#e6eed9', 300: '#aecb8a', 400: '#8fb069', 500: '#6b8e4e', 600: '#577a3c', 700: '#445f30' },
+          },
+        },
+      },
+    };
+  </script>
+</head>
+
+<body class="h-full bg-stone-950 text-stone-100 font-sans antialiased">
+  <div class="mx-auto flex h-[100dvh] max-w-2xl flex-col overflow-hidden px-4 py-4 sm:py-6">
+
+    <!-- En-tête -->
+    <header class="mb-3 shrink-0 flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <h1 class="text-2xl font-bold tracking-tight text-moss-300">Birdle</h1>
+      </div>
+      <div class="flex items-center gap-4 text-sm">
+        <div class="text-right">
+          <div class="font-semibold text-stone-100" id="score">0</div>
+          <div class="text-xs uppercase tracking-wide text-stone-500">Score</div>
+        </div>
+        <div class="text-right">
+          <div class="font-semibold text-stone-100" id="streak">0</div>
+          <div class="text-xs uppercase tracking-wide text-stone-500">Série</div>
+        </div>
+      </div>
+    </header>
+
+    <p class="mb-3 shrink-0 text-sm text-stone-400">Quel est cet oiseau ? Choisis la bonne réponse parmi les quatre.</p>
+
+    <!-- Carte du jeu -->
+    <main class="flex min-h-0 flex-1 flex-col">
+      <div
+        class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-3xl bg-stone-900 shadow-lg ring-1 ring-stone-800">
+        <!-- Image (occupe l'espace restant) -->
+        <div class="relative min-h-0 flex-1 bg-stone-800">
+          <div id="img-skeleton" class="absolute inset-0 animate-pulse bg-stone-800"></div>
+          <img id="bird-img" alt="Oiseau à identifier"
+            class="absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-500" />
+        </div>
+
+        <!-- Choix (hauteur fixe) -->
+        <div class="shrink-0 p-3 sm:p-4">
+          <div id="choices" class="grid grid-cols-2 gap-2 sm:gap-3"></div>
+
+          <!-- Feedback -->
+          <div id="feedback" class="mt-3 hidden rounded-2xl px-4 py-2 text-sm"></div>
+
+          <!-- Bouton suivant -->
+          <button id="next-btn"
+            class="mt-3 hidden w-full rounded-2xl bg-moss-600 px-4 py-2.5 font-semibold text-white shadow-sm transition hover:bg-moss-700 focus:outline-none focus:ring-2 focus:ring-moss-500 focus:ring-offset-2">
+            Oiseau suivant →
+          </button>
+        </div>
+      </div>
+
+      <!-- Erreur -->
+      <div id="error"
+        class="mt-3 hidden shrink-0 rounded-2xl bg-red-950/60 px-4 py-3 text-sm text-red-300 ring-1 ring-red-900"></div>
+    </main>
+
+    <footer class="mt-3 shrink-0 text-center text-xs text-stone-500">
+      Données &amp; photos : <a href="https://nuthatch.lastelm.software/" class="underline hover:text-stone-300"
+        target="_blank" rel="noopener">Nuthatch API</a>
+    </footer>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+
+</html>
