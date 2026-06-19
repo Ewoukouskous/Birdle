@@ -14,17 +14,24 @@ const REGION_FR = {
 };
 
 const DIFFICULTY_FR = { easy: 'Facile', medium: 'Moyen', hard: 'Difficile' };
+const MODE_FR = { classic: 'Classique', lives: '3 vies' };
+const MAX_LIVES = 3;
 
 const el = {
   regionView: document.getElementById('region-view'),
+  modeView: document.getElementById('mode-view'),
   difficultyView: document.getElementById('difficulty-view'),
   gameView: document.getElementById('game-view'),
   regions: document.getElementById('regions'),
   regionError: document.getElementById('region-error'),
+  modeSub: document.getElementById('mode-sub'),
   difficultySub: document.getElementById('difficulty-sub'),
   gameLabel: document.getElementById('game-label'),
   back: document.getElementById('back-btn'),
   scoreboard: document.getElementById('scoreboard'),
+  streakBox: document.getElementById('streak-box'),
+  livesBox: document.getElementById('lives-box'),
+  lives: document.getElementById('lives'),
   img: document.getElementById('bird-img'),
   skeleton: document.getElementById('img-skeleton'),
   choices: document.getElementById('choices'),
@@ -35,7 +42,11 @@ const el = {
   streak: document.getElementById('streak'),
 };
 
-const state = { score: 0, streak: 0, region: '', regionLabel: '', difficulty: 'medium', view: 'region' };
+const state = {
+  score: 0, streak: 0, lives: MAX_LIVES,
+  region: '', regionLabel: '', mode: 'classic', difficulty: 'medium',
+  view: 'region', question: null, locked: false, gameOver: false,
+};
 
 function frRegion(name) {
   return REGION_FR[String(name).toLowerCase()] || name;
@@ -49,7 +60,7 @@ function showError(node, msg) {
 
 function showView(view) {
   state.view = view;
-  for (const v of ['region', 'difficulty', 'game']) {
+  for (const v of ['region', 'mode', 'difficulty', 'game']) {
     const node = el[v + 'View'];
     const active = v === view;
     node.classList.toggle('hidden', !active);
@@ -58,6 +69,10 @@ function showView(view) {
   el.back.classList.toggle('hidden', view === 'region');
   el.scoreboard.classList.toggle('hidden', view !== 'game');
   el.scoreboard.classList.toggle('flex', view === 'game');
+}
+
+function renderLives() {
+  el.lives.textContent = '❤️'.repeat(state.lives) + '🤍'.repeat(MAX_LIVES - state.lives);
 }
 
 function regionButton(label, sub, region, displayLabel) {
@@ -95,18 +110,38 @@ async function loadRegions() {
 function chooseRegion(region, displayLabel) {
   state.region = region;
   state.regionLabel = displayLabel;
-  el.difficultySub.textContent = `Région : ${displayLabel}`;
+  el.modeSub.textContent = `Région : ${displayLabel}`;
+  showView('mode');
+}
+
+function chooseMode(mode) {
+  state.mode = mode;
+  el.difficultySub.textContent = `${displayLabel()} · ${MODE_FR[mode]}`;
   showView('difficulty');
+}
+
+function displayLabel() {
+  return state.regionLabel;
 }
 
 function chooseDifficulty(difficulty) {
   state.difficulty = difficulty;
+  el.gameLabel.textContent = `(${state.regionLabel} · ${MODE_FR[state.mode]} · ${DIFFICULTY_FR[difficulty]})`;
+  const livesMode = state.mode === 'lives';
+  el.streakBox.classList.toggle('hidden', livesMode);
+  el.livesBox.classList.toggle('hidden', !livesMode);
+  showView('game');
+  startRound();
+}
+
+function startRound() {
   state.score = 0;
   state.streak = 0;
+  state.lives = MAX_LIVES;
+  state.gameOver = false;
   el.score.textContent = '0';
   el.streak.textContent = '0';
-  el.gameLabel.textContent = `(${state.regionLabel} · ${DIFFICULTY_FR[difficulty]})`;
-  showView('game');
+  renderLives();
   loadQuestion();
 }
 
@@ -114,8 +149,18 @@ function goBack() {
   if (state.view === 'game') {
     showView('difficulty');
   } else if (state.view === 'difficulty') {
+    showView('mode');
+  } else if (state.view === 'mode') {
     showView('region');
     loadRegions();
+  }
+}
+
+function onNext() {
+  if (state.gameOver) {
+    startRound();
+  } else {
+    loadQuestion();
   }
 }
 
@@ -139,6 +184,7 @@ async function loadQuestion() {
   showError(el.error, null);
   el.feedback.classList.add('hidden');
   el.next.classList.add('hidden');
+  el.next.textContent = 'Oiseau suivant →';
   el.choices.innerHTML = '';
   el.img.classList.add('opacity-0');
   el.skeleton.classList.remove('hidden');
@@ -185,6 +231,10 @@ function onAnswer(index) {
     state.streak += 1;
   } else {
     state.streak = 0;
+    if (state.mode === 'lives') {
+      state.lives = Math.max(0, state.lives - 1);
+      renderLives();
+    }
     buttons[index].className =
       'w-full rounded-2xl border-2 border-red-500 bg-red-500/15 px-4 py-2.5 text-left font-semibold text-red-300';
   }
@@ -192,9 +242,18 @@ function onAnswer(index) {
   el.streak.textContent = state.streak;
 
   const sci = correct.sciName ? ` <i>${correct.sciName}</i>` : '';
-  el.feedback.innerHTML = right
+  const lead = right
     ? `<span class="font-semibold">Bravo !</span> C'était bien le <span class="font-semibold">${correct.name}</span>${sci}.`
     : `<span class="font-semibold">Raté.</span> C'était le <span class="font-semibold">${correct.name}</span>${sci}.`;
+
+  if (state.mode === 'lives' && state.lives <= 0) {
+    state.gameOver = true;
+    el.feedback.innerHTML = `${lead}<br /><span class="font-semibold">Partie terminée !</span> Score final : ${state.score}.`;
+    el.next.textContent = 'Rejouer ↺';
+  } else {
+    el.feedback.innerHTML = lead;
+  }
+
   el.feedback.className =
     'mt-3 rounded-2xl px-4 py-2 text-sm ' +
     (right ? 'bg-emerald-500/15 text-emerald-300' : 'bg-amber-500/15 text-amber-300');
@@ -203,10 +262,13 @@ function onAnswer(index) {
   el.next.focus();
 }
 
+document.querySelectorAll('.mode-btn').forEach((b) => {
+  b.addEventListener('click', () => chooseMode(b.dataset.mode));
+});
 document.querySelectorAll('.diff-btn').forEach((b) => {
   b.addEventListener('click', () => chooseDifficulty(b.dataset.difficulty));
 });
-el.next.addEventListener('click', loadQuestion);
+el.next.addEventListener('click', onNext);
 el.back.addEventListener('click', goBack);
 showView('region');
 loadRegions();

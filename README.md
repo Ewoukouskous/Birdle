@@ -26,9 +26,9 @@ A small web game to learn birds: look at a photo, pick the right name out of fou
 **Birdle** is a simple web app to learn how to recognize birds. The game shows a bird
 photo and four names; you pick the right one. It keeps a score and a streak.
 
-When you launch it, you **pick a region** (or all regions) and a **difficulty**, then play
-with the birds from that region. Names are shown **in French** plus the **scientific
-(Latin)** name below.
+When you launch it, you **pick a region** (or all regions), a **game mode**, and a
+**difficulty**, then play with the birds from that region. Names are shown **in French**
+plus the **scientific (Latin)** name below.
 
 The project has two parts running in **one container**:
 
@@ -106,6 +106,11 @@ family/order:
 - **easy**: decoys from a different family (very easy to tell apart).
 - **medium**: random decoys from the region.
 - **hard**: decoys from the same family as the answer (easy to confuse).
+
+The **game mode** is handled in the browser:
+
+- **Classic**: endless, just keep guessing (score + streak).
+- **3 lives**: three wrong answers and the game ends; you can replay right away.
 
 ## 🔐 Environment Variables (.env)
 
