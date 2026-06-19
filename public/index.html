@@ -54,6 +54,10 @@
           <div class="font-semibold" id="lives">❤️❤️❤️</div>
           <div class="text-xs uppercase tracking-wide text-stone-500">Vies</div>
         </div>
+        <div id="timer-box" class="hidden text-right">
+          <div class="font-semibold text-stone-100" id="timer">60s</div>
+          <div class="text-xs uppercase tracking-wide text-stone-500">Temps</div>
+        </div>
       </div>
     </header>
 
@@ -78,6 +82,11 @@
           class="mode-btn rounded-2xl border border-stone-700 bg-stone-800 px-4 py-4 text-left transition hover:border-moss-400 hover:bg-stone-700 focus:outline-none focus:ring-2 focus:ring-moss-400">
           <span class="block font-semibold text-stone-100">❤️ 3 vies</span>
           <span class="mt-0.5 block text-sm text-stone-400">Trois erreurs et la partie s'arrête.</span>
+        </button>
+        <button data-mode="timed"
+          class="mode-btn rounded-2xl border border-stone-700 bg-stone-800 px-4 py-4 text-left transition hover:border-moss-400 hover:bg-stone-700 focus:outline-none focus:ring-2 focus:ring-moss-400">
+          <span class="block font-semibold text-stone-100">⏱️ Contre-la-montre</span>
+          <span class="mt-0.5 block text-sm text-stone-400">Un maximum d'oiseaux en 60 secondes.</span>
         </button>
       </div>
     </section>

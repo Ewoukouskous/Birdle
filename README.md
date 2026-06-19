@@ -111,6 +111,7 @@ The **game mode** is handled in the browser:
 
 - **Classic**: endless, just keep guessing (score + streak).
 - **3 lives**: three wrong answers and the game ends; you can replay right away.
+- **Time trial**: score as many birds as possible in 60 seconds (auto-advances after each answer).
 
 ## 🔐 Environment Variables (.env)
 

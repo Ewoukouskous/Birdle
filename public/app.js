@@ -14,8 +14,14 @@ const REGION_FR = {
 };
 
 const DIFFICULTY_FR = { easy: 'Facile', medium: 'Moyen', hard: 'Difficile' };
-const MODE_FR = { classic: 'Classique', lives: '3 vies' };
+const MODE_FR = { classic: 'Classique', lives: '3 vies', timed: 'Contre-la-montre' };
 const MAX_LIVES = 3;
+const TIME_LIMIT = 60;
+
+const CORRECT_CLASS =
+  'w-full rounded-2xl border-2 border-emerald-500 bg-emerald-500/15 px-4 py-2.5 text-left font-semibold text-emerald-300';
+const WRONG_CLASS =
+  'w-full rounded-2xl border-2 border-red-500 bg-red-500/15 px-4 py-2.5 text-left font-semibold text-red-300';
 
 const el = {
   regionView: document.getElementById('region-view'),
@@ -32,6 +38,8 @@ const el = {
   streakBox: document.getElementById('streak-box'),
   livesBox: document.getElementById('lives-box'),
   lives: document.getElementById('lives'),
+  timerBox: document.getElementById('timer-box'),
+  timer: document.getElementById('timer'),
   img: document.getElementById('bird-img'),
   skeleton: document.getElementById('img-skeleton'),
   choices: document.getElementById('choices'),
@@ -43,9 +51,10 @@ const el = {
 };
 
 const state = {
-  score: 0, streak: 0, lives: MAX_LIVES,
+  score: 0, streak: 0, lives: MAX_LIVES, timeLeft: TIME_LIMIT,
   region: '', regionLabel: '', mode: 'classic', difficulty: 'medium',
   view: 'region', question: null, locked: false, gameOver: false,
+  tickTimer: null, advanceTimer: null,
 };
 
 function frRegion(name) {
@@ -71,8 +80,19 @@ function showView(view) {
   el.scoreboard.classList.toggle('flex', view === 'game');
 }
 
+function clearTimers() {
+  if (state.tickTimer) { clearInterval(state.tickTimer); state.tickTimer = null; }
+  if (state.advanceTimer) { clearTimeout(state.advanceTimer); state.advanceTimer = null; }
+}
+
 function renderLives() {
   el.lives.textContent = '❤️'.repeat(state.lives) + '🤍'.repeat(MAX_LIVES - state.lives);
+}
+
+function renderTimer() {
+  el.timer.textContent = state.timeLeft + 's';
+  el.timer.classList.toggle('text-red-400', state.timeLeft <= 10);
+  el.timer.classList.toggle('text-stone-100', state.timeLeft > 10);
 }
 
 function regionButton(label, sub, region, displayLabel) {
@@ -116,37 +136,65 @@ function chooseRegion(region, displayLabel) {
 
 function chooseMode(mode) {
   state.mode = mode;
-  el.difficultySub.textContent = `${displayLabel()} · ${MODE_FR[mode]}`;
+  el.difficultySub.textContent = `${state.regionLabel} · ${MODE_FR[mode]}`;
   showView('difficulty');
-}
-
-function displayLabel() {
-  return state.regionLabel;
 }
 
 function chooseDifficulty(difficulty) {
   state.difficulty = difficulty;
   el.gameLabel.textContent = `(${state.regionLabel} · ${MODE_FR[state.mode]} · ${DIFFICULTY_FR[difficulty]})`;
-  const livesMode = state.mode === 'lives';
-  el.streakBox.classList.toggle('hidden', livesMode);
-  el.livesBox.classList.toggle('hidden', !livesMode);
+  el.streakBox.classList.toggle('hidden', state.mode !== 'classic');
+  el.livesBox.classList.toggle('hidden', state.mode !== 'lives');
+  el.timerBox.classList.toggle('hidden', state.mode !== 'timed');
   showView('game');
   startRound();
 }
 
 function startRound() {
+  clearTimers();
   state.score = 0;
   state.streak = 0;
   state.lives = MAX_LIVES;
+  state.timeLeft = TIME_LIMIT;
   state.gameOver = false;
   el.score.textContent = '0';
   el.streak.textContent = '0';
   renderLives();
+  renderTimer();
+  if (state.mode === 'timed') {
+    state.tickTimer = setInterval(tick, 1000);
+  }
   loadQuestion();
+}
+
+function tick() {
+  state.timeLeft -= 1;
+  renderTimer();
+  if (state.timeLeft <= 0) endTimed();
+}
+
+function endTimed() {
+  clearTimers();
+  state.gameOver = true;
+  if (!state.locked) {
+    state.locked = true;
+    const buttons = [...el.choices.querySelectorAll('button')];
+    buttons.forEach((b) => { b.disabled = true; b.classList.add('cursor-default'); });
+    if (state.question && buttons[state.question.answerIndex]) {
+      buttons[state.question.answerIndex].className = CORRECT_CLASS;
+    }
+  }
+  el.feedback.innerHTML = `<span class="font-semibold">Temps écoulé !</span> Score : ${state.score}.`;
+  el.feedback.className = 'mt-3 rounded-2xl px-4 py-2 text-sm bg-amber-500/15 text-amber-300';
+  el.feedback.classList.remove('hidden');
+  el.next.textContent = 'Rejouer ↺';
+  el.next.classList.remove('hidden');
+  el.next.focus();
 }
 
 function goBack() {
   if (state.view === 'game') {
+    clearTimers();
     showView('difficulty');
   } else if (state.view === 'difficulty') {
     showView('mode');
@@ -221,9 +269,7 @@ function onAnswer(index) {
   const buttons = [...el.choices.querySelectorAll('button')];
 
   buttons.forEach((b) => { b.disabled = true; b.classList.add('cursor-default'); });
-
-  buttons[answerIndex].className =
-    'w-full rounded-2xl border-2 border-emerald-500 bg-emerald-500/15 px-4 py-2.5 text-left font-semibold text-emerald-300';
+  buttons[answerIndex].className = CORRECT_CLASS;
 
   const right = index === answerIndex;
   if (right) {
@@ -235,8 +281,7 @@ function onAnswer(index) {
       state.lives = Math.max(0, state.lives - 1);
       renderLives();
     }
-    buttons[index].className =
-      'w-full rounded-2xl border-2 border-red-500 bg-red-500/15 px-4 py-2.5 text-left font-semibold text-red-300';
+    buttons[index].className = WRONG_CLASS;
   }
   el.score.textContent = state.score;
   el.streak.textContent = state.streak;
@@ -246,20 +291,25 @@ function onAnswer(index) {
     ? `<span class="font-semibold">Bravo !</span> C'était bien le <span class="font-semibold">${correct.name}</span>${sci}.`
     : `<span class="font-semibold">Raté.</span> C'était le <span class="font-semibold">${correct.name}</span>${sci}.`;
 
+  el.feedback.className =
+    'mt-3 rounded-2xl px-4 py-2 text-sm ' +
+    (right ? 'bg-emerald-500/15 text-emerald-300' : 'bg-amber-500/15 text-amber-300');
+  el.feedback.classList.remove('hidden');
+
   if (state.mode === 'lives' && state.lives <= 0) {
     state.gameOver = true;
     el.feedback.innerHTML = `${lead}<br /><span class="font-semibold">Partie terminée !</span> Score final : ${state.score}.`;
     el.next.textContent = 'Rejouer ↺';
+    el.next.classList.remove('hidden');
+    el.next.focus();
+  } else if (state.mode === 'timed') {
+    el.feedback.innerHTML = lead;
+    state.advanceTimer = setTimeout(() => { if (!state.gameOver) loadQuestion(); }, 800);
   } else {
     el.feedback.innerHTML = lead;
+    el.next.classList.remove('hidden');
+    el.next.focus();
   }
-
-  el.feedback.className =
-    'mt-3 rounded-2xl px-4 py-2 text-sm ' +
-    (right ? 'bg-emerald-500/15 text-emerald-300' : 'bg-amber-500/15 text-amber-300');
-
-  el.next.classList.remove('hidden');
-  el.next.focus();
 }
 
 document.querySelectorAll('.mode-btn').forEach((b) => {
