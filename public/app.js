@@ -1,6 +1,26 @@
 'use strict';
 
+const REGION_FR = {
+  'north america': 'Amérique du Nord',
+  'central america': 'Amérique centrale',
+  'south america': 'Amérique du Sud',
+  'western europe': 'Europe de l’Ouest',
+  'europe': 'Europe',
+  'eurasia': 'Eurasie',
+  'asia': 'Asie',
+  'africa': 'Afrique',
+  'australia': 'Australie',
+  'oceania': 'Océanie',
+};
+
 const el = {
+  regionView: document.getElementById('region-view'),
+  gameView: document.getElementById('game-view'),
+  regions: document.getElementById('regions'),
+  regionError: document.getElementById('region-error'),
+  regionLabel: document.getElementById('region-label'),
+  back: document.getElementById('back-btn'),
+  scoreboard: document.getElementById('scoreboard'),
   img: document.getElementById('bird-img'),
   skeleton: document.getElementById('img-skeleton'),
   choices: document.getElementById('choices'),
@@ -11,12 +31,76 @@ const el = {
   streak: document.getElementById('streak'),
 };
 
-const state = { score: 0, streak: 0, question: null, locked: false };
+const state = { score: 0, streak: 0, region: '', question: null, locked: false };
 
-function setError(msg) {
-  if (!msg) { el.error.classList.add('hidden'); return; }
-  el.error.textContent = msg;
-  el.error.classList.remove('hidden');
+function frRegion(name) {
+  return REGION_FR[String(name).toLowerCase()] || name;
+}
+
+function showError(node, msg) {
+  if (!msg) { node.classList.add('hidden'); return; }
+  node.textContent = msg;
+  node.classList.remove('hidden');
+}
+
+function regionButton(label, sub, region, displayLabel) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className =
+    'flex items-center justify-between rounded-2xl border border-stone-700 bg-stone-800 px-4 py-3 ' +
+    'text-left font-medium text-stone-200 transition hover:border-moss-400 hover:bg-stone-700 ' +
+    'focus:outline-none focus:ring-2 focus:ring-moss-400';
+  const count = sub ? `<span class="ml-3 shrink-0 text-xs text-stone-500">${sub}</span>` : '';
+  btn.innerHTML = `<span>${label}</span>${count}`;
+  btn.addEventListener('click', () => startGame(region, displayLabel));
+  return btn;
+}
+
+async function loadRegions() {
+  showError(el.regionError, null);
+  el.regions.innerHTML = '';
+  try {
+    const res = await fetch('/api/regions');
+    if (!res.ok) throw new Error('Réponse ' + res.status);
+    const data = await res.json();
+    el.regions.appendChild(
+      regionButton('🌍 Toutes les régions', `${data.total} oiseaux`, 'all', 'Toutes les régions'),
+    );
+    data.regions.forEach((r) => {
+      const label = frRegion(r.name);
+      el.regions.appendChild(regionButton(label, `${r.count} oiseaux`, r.name, label));
+    });
+  } catch (err) {
+    showError(el.regionError, 'Impossible de charger les régions. Vérifie que le serveur tourne.');
+  }
+}
+
+function startGame(region, displayLabel) {
+  state.region = region;
+  state.score = 0;
+  state.streak = 0;
+  el.score.textContent = '0';
+  el.streak.textContent = '0';
+  el.regionLabel.textContent = displayLabel ? `(${displayLabel})` : '';
+  el.regionView.classList.add('hidden');
+  el.regionView.classList.remove('flex');
+  el.gameView.classList.remove('hidden');
+  el.gameView.classList.add('flex');
+  el.back.classList.remove('hidden');
+  el.scoreboard.classList.remove('hidden');
+  el.scoreboard.classList.add('flex');
+  loadQuestion();
+}
+
+function backToRegions() {
+  el.gameView.classList.add('hidden');
+  el.gameView.classList.remove('flex');
+  el.regionView.classList.remove('hidden');
+  el.regionView.classList.add('flex');
+  el.back.classList.add('hidden');
+  el.scoreboard.classList.add('hidden');
+  el.scoreboard.classList.remove('flex');
+  loadRegions();
 }
 
 function makeButton(option, index) {
@@ -37,7 +121,7 @@ function makeButton(option, index) {
 
 async function loadQuestion() {
   state.locked = false;
-  setError(null);
+  showError(el.error, null);
   el.feedback.classList.add('hidden');
   el.next.classList.add('hidden');
   el.choices.innerHTML = '';
@@ -45,7 +129,7 @@ async function loadQuestion() {
   el.skeleton.classList.remove('hidden');
 
   try {
-    const res = await fetch('/api/quiz');
+    const res = await fetch('/api/quiz?region=' + encodeURIComponent(state.region));
     if (!res.ok) throw new Error('Réponse ' + res.status);
     const q = await res.json();
     state.question = q;
@@ -61,7 +145,7 @@ async function loadQuestion() {
 
     q.options.forEach((opt, i) => el.choices.appendChild(makeButton(opt, i)));
   } catch (err) {
-    setError("Impossible de charger un oiseau. Vérifie que le serveur tourne, puis réessaie.");
+    showError(el.error, 'Impossible de charger un oiseau. Réessaie.');
     el.skeleton.classList.add('hidden');
   }
 }
@@ -102,4 +186,5 @@ function onAnswer(index) {
 }
 
 el.next.addEventListener('click', loadQuestion);
-loadQuestion();
+el.back.addEventListener('click', backToRegions);
+loadRegions();

@@ -10,10 +10,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const API_KEY = process.env.NUTHATCH_API_KEY;
 const PORT = Number(process.env.PORT) || 3000;
-const REGION_FILTER = (process.env.REGION_FILTER || 'europe').toLowerCase().trim();
+const DEFAULT_REGION = (process.env.REGION_FILTER || '').toLowerCase().trim();
 const CACHE_TTL_MS = (Number(process.env.CACHE_TTL_HOURS) || 12) * 60 * 60 * 1000;
 const NUTHATCH_URL = 'https://nuthatch.lastelm.software/v2/birds';
-const CHOICES = 4; // nombre de propositions par question
+const CHOICES = 4;
 
 if (!API_KEY) {
   console.error('[birdle] NUTHATCH_API_KEY manquante. Renseigne-la dans .env');
@@ -21,6 +21,7 @@ if (!API_KEY) {
 }
 
 let birdPool = [];
+let regionList = [];
 let lastFetch = 0;
 let refreshing = null;
 
@@ -74,16 +75,25 @@ async function fetchFrenchNames(sciNames) {
   return map;
 }
 
-function matchesRegion(bird) {
-  if (!REGION_FILTER) return true;
-  const regions = Array.isArray(bird.region) ? bird.region : [];
-  return regions.some((r) => String(r).toLowerCase().includes(REGION_FILTER));
+function buildRegionList(pool) {
+  const counts = new Map();
+  for (const bird of pool) {
+    for (const region of bird.region) {
+      const label = String(region).trim();
+      if (!label) continue;
+      counts.set(label, (counts.get(label) || 0) + 1);
+    }
+  }
+  return [...counts.entries()]
+    .filter(([, count]) => count >= CHOICES)
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
 }
 
 async function refreshPool() {
   const all = await fetchAllBirds();
   const filtered = all.filter(
-    (b) => matchesRegion(b) && Array.isArray(b.images) && b.images.length > 0 && b.name,
+    (b) => Array.isArray(b.images) && b.images.length > 0 && b.name,
   );
   const seen = new Set();
   const unique = filtered.filter((b) => {
@@ -92,7 +102,7 @@ async function refreshPool() {
     return true;
   });
   if (unique.length < CHOICES) {
-    throw new Error(`Pool trop petit (${unique.length}) pour le filtre "${REGION_FILTER}"`);
+    throw new Error(`Pool trop petit (${unique.length})`);
   }
   const pool = unique.map((b) => ({
     name: b.name,
@@ -111,9 +121,10 @@ async function refreshPool() {
   });
 
   birdPool = pool;
+  regionList = buildRegionList(pool);
   lastFetch = Date.now();
   console.log(
-    `[birdle] Pool chargé : ${birdPool.length} oiseaux (filtre "${REGION_FILTER}"), ` +
+    `[birdle] Pool chargé : ${birdPool.length} oiseaux, ${regionList.length} régions, ` +
     `${translated} traduits en français.`,
   );
 }
@@ -127,6 +138,12 @@ async function ensurePool() {
   await refreshing;
 }
 
+function poolForRegion(region) {
+  const q = String(region || DEFAULT_REGION).toLowerCase().trim();
+  if (!q || q === 'all') return birdPool;
+  return birdPool.filter((b) => b.region.some((r) => String(r).toLowerCase().includes(q)));
+}
+
 function sample(arr, n) {
   const copy = arr.slice();
   const res = [];
@@ -137,8 +154,8 @@ function sample(arr, n) {
   return res;
 }
 
-function buildQuestion() {
-  const [correct, ...decoys] = sample(birdPool, CHOICES);
+function buildQuestion(pool) {
+  const [correct, ...decoys] = sample(pool, CHOICES);
   const options = [correct, ...decoys];
   for (let i = options.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -190,14 +207,28 @@ const apiLimiter = rateLimit({
 app.use('/api', apiLimiter);
 
 app.get('/api/health', (req, res) => {
-  res.json({ ok: true, pool: birdPool.length, lastFetch });
+  res.json({ ok: true, pool: birdPool.length, regions: regionList.length, lastFetch });
+});
+
+app.get('/api/regions', async (req, res) => {
+  try {
+    await ensurePool();
+    res.json({ regions: regionList, total: birdPool.length, defaultRegion: DEFAULT_REGION });
+  } catch (err) {
+    console.error('[birdle] /api/regions', err.message);
+    res.status(502).json({ error: 'Impossible de charger les régions pour le moment.' });
+  }
 });
 
 app.get('/api/quiz', async (req, res) => {
   try {
     await ensurePool();
+    const pool = poolForRegion(req.query.region);
+    if (pool.length < CHOICES) {
+      return res.status(400).json({ error: "Pas assez d'oiseaux dans cette region." });
+    }
     res.set('Cache-Control', 'no-store');
-    res.json(buildQuestion());
+    res.json(buildQuestion(pool));
   } catch (err) {
     console.error('[birdle] /api/quiz', err.message);
     res.status(502).json({ error: 'Impossible de charger les oiseaux pour le moment.' });
