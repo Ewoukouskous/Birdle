@@ -23,6 +23,7 @@ if (!API_KEY) {
 
 let birdPool = [];
 let regionList = [];
+let familyFr = new Map();
 let lastFetch = 0;
 let refreshing = null;
 
@@ -43,9 +44,9 @@ async function fetchAllBirds() {
   return out;
 }
 
-async function fetchFrenchNames(sciNames) {
+async function fetchFrenchNames(taxa) {
   const map = new Map();
-  const unique = [...new Set(sciNames.filter(Boolean))];
+  const unique = [...new Set(taxa.filter(Boolean))];
   const CHUNK = 120;
   for (let i = 0; i < unique.length; i += CHUNK) {
     const batch = unique.slice(i, i + CHUNK);
@@ -115,20 +116,22 @@ async function refreshPool() {
     image: b.images[0],
   }));
 
-  const frMap = await fetchFrenchNames(pool.map((b) => b.sciName));
+  const families = [...new Set(pool.map((b) => b.family).filter(Boolean))];
+  const frMap = await fetchFrenchNames(pool.map((b) => b.sciName).concat(families));
   let translated = 0;
   pool.forEach((b) => {
     const fr = frMap.get(b.sciName);
     b.frName = fr || b.name;
     if (fr) translated++;
   });
+  familyFr = new Map(families.map((f) => [f, frMap.get(f) || f]));
 
   birdPool = pool;
   regionList = buildRegionList(pool);
   lastFetch = Date.now();
   console.log(
     `[birdle] Pool chargé : ${birdPool.length} oiseaux, ${regionList.length} régions, ` +
-    `${translated} traduits en français.`,
+    `${families.length} familles, ${translated} traduits en français.`,
   );
 }
 
@@ -145,6 +148,18 @@ function poolForRegion(region) {
   const q = String(region || DEFAULT_REGION).toLowerCase().trim();
   if (!q || q === 'all') return birdPool;
   return birdPool.filter((b) => b.region.some((r) => String(r).toLowerCase().includes(q)));
+}
+
+function familiesForRegion(region) {
+  const pool = poolForRegion(region);
+  const counts = new Map();
+  for (const b of pool) {
+    if (b.family) counts.set(b.family, (counts.get(b.family) || 0) + 1);
+  }
+  return [...counts.entries()]
+    .filter(([, count]) => count >= CHOICES)
+    .map(([family, count]) => ({ family, label: familyFr.get(family) || family, count }))
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
 }
 
 function sample(arr, n) {
@@ -258,14 +273,28 @@ app.get('/api/regions', async (req, res) => {
   }
 });
 
+app.get('/api/families', async (req, res) => {
+  try {
+    await ensurePool();
+    res.json({ families: familiesForRegion(req.query.region) });
+  } catch (err) {
+    console.error('[birdle] /api/families', err.message);
+    res.status(502).json({ error: 'Impossible de charger les familles pour le moment.' });
+  }
+});
+
 app.get('/api/quiz', async (req, res) => {
   try {
     await ensurePool();
-    const pool = poolForRegion(req.query.region);
+    let pool = poolForRegion(req.query.region);
+    const family = req.query.family;
+    if (family) pool = pool.filter((b) => b.family === family);
     if (pool.length < CHOICES) {
-      return res.status(400).json({ error: "Pas assez d'oiseaux dans cette region." });
+      return res.status(400).json({ error: "Pas assez d'oiseaux dans cette selection." });
     }
-    const difficulty = DIFFICULTIES.has(req.query.difficulty) ? req.query.difficulty : 'medium';
+    const difficulty = family
+      ? 'medium'
+      : (DIFFICULTIES.has(req.query.difficulty) ? req.query.difficulty : 'medium');
     res.set('Cache-Control', 'no-store');
     res.json(buildQuestion(pool, difficulty));
   } catch (err) {

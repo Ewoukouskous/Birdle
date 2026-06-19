@@ -112,6 +112,7 @@ The **game mode** is handled in the browser:
 - **Classic**: endless, just keep guessing (score + streak).
 - **3 lives**: three wrong answers and the game ends; you can replay right away.
 - **Time trial**: score as many birds as possible in 60 seconds (auto-advances after each answer).
+- **By family**: instead of a difficulty, pick a bird family and revise only its species (all four options come from that family).
 
 ## 🔐 Environment Variables (.env)
 
@@ -178,7 +179,8 @@ birdle/
 |--------|----------------|--------------------------------------------------------|
 | GET    | `/`              | The static game page                                   |
 | GET    | `/api/regions`   | Available regions (with bird counts) + total           |
-| GET    | `/api/quiz?region=&difficulty=` | One question: photo, 4 options, answer (difficulty: easy/medium/hard) |
+| GET    | `/api/families?region=` | Bird families in a region (with species counts) |
+| GET    | `/api/quiz?region=&difficulty=&family=` | One question: photo, 4 options, answer (optional `family` restricts to one family) |
 | GET    | `/api/health`    | Status + number of birds and regions cached            |
 
 ## 📎 Useful Commands

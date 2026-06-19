@@ -14,7 +14,7 @@ const REGION_FR = {
 };
 
 const DIFFICULTY_FR = { easy: 'Facile', medium: 'Moyen', hard: 'Difficile' };
-const MODE_FR = { classic: 'Classique', lives: '3 vies', timed: 'Contre-la-montre' };
+const MODE_FR = { classic: 'Classique', lives: '3 vies', timed: 'Contre-la-montre', especes: 'Par familles' };
 const MAX_LIVES = 3;
 const TIME_LIMIT = 60;
 
@@ -27,9 +27,13 @@ const el = {
   regionView: document.getElementById('region-view'),
   modeView: document.getElementById('mode-view'),
   difficultyView: document.getElementById('difficulty-view'),
+  familyView: document.getElementById('family-view'),
   gameView: document.getElementById('game-view'),
   regions: document.getElementById('regions'),
   regionError: document.getElementById('region-error'),
+  families: document.getElementById('families'),
+  familyError: document.getElementById('family-error'),
+  familySub: document.getElementById('family-sub'),
   modeSub: document.getElementById('mode-sub'),
   difficultySub: document.getElementById('difficulty-sub'),
   gameLabel: document.getElementById('game-label'),
@@ -52,7 +56,7 @@ const el = {
 
 const state = {
   score: 0, streak: 0, lives: MAX_LIVES, timeLeft: TIME_LIMIT,
-  region: '', regionLabel: '', mode: 'classic', difficulty: 'medium',
+  region: '', regionLabel: '', mode: 'classic', difficulty: 'medium', family: '', familyLabel: '',
   view: 'region', question: null, locked: false, gameOver: false,
   tickTimer: null, advanceTimer: null,
 };
@@ -69,7 +73,7 @@ function showError(node, msg) {
 
 function showView(view) {
   state.view = view;
-  for (const v of ['region', 'mode', 'difficulty', 'game']) {
+  for (const v of ['region', 'mode', 'difficulty', 'family', 'game']) {
     const node = el[v + 'View'];
     const active = v === view;
     node.classList.toggle('hidden', !active);
@@ -95,16 +99,16 @@ function renderTimer() {
   el.timer.classList.toggle('text-stone-100', state.timeLeft > 10);
 }
 
-function regionButton(label, sub, region, displayLabel) {
+function listButton(label, sub, onClick) {
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.className =
     'flex items-center justify-between rounded-2xl border border-stone-700 bg-stone-800 px-4 py-3 ' +
     'text-left font-medium text-stone-200 transition hover:border-moss-400 hover:bg-stone-700 ' +
     'focus:outline-none focus:ring-2 focus:ring-moss-400';
-  const count = sub ? `<span class="ml-3 shrink-0 text-xs text-stone-500">${sub}</span>` : '';
-  btn.innerHTML = `<span>${label}</span>${count}`;
-  btn.addEventListener('click', () => chooseRegion(region, displayLabel));
+  const extra = sub ? `<span class="ml-3 shrink-0 text-xs text-stone-500">${sub}</span>` : '';
+  btn.innerHTML = `<span>${label}</span>${extra}`;
+  btn.addEventListener('click', onClick);
   return btn;
 }
 
@@ -116,14 +120,33 @@ async function loadRegions() {
     if (!res.ok) throw new Error('Réponse ' + res.status);
     const data = await res.json();
     el.regions.appendChild(
-      regionButton('🌍 Toutes les régions', `${data.total} oiseaux`, 'all', 'Toutes les régions'),
+      listButton('🌍 Toutes les régions', `${data.total} oiseaux`, () => chooseRegion('all', 'Toutes les régions')),
     );
     data.regions.forEach((r) => {
       const label = frRegion(r.name);
-      el.regions.appendChild(regionButton(label, `${r.count} oiseaux`, r.name, label));
+      el.regions.appendChild(listButton(label, `${r.count} oiseaux`, () => chooseRegion(r.name, label)));
     });
   } catch (err) {
     showError(el.regionError, 'Impossible de charger les régions. Vérifie que le serveur tourne.');
+  }
+}
+
+async function loadFamilies() {
+  showError(el.familyError, null);
+  el.families.innerHTML = '';
+  try {
+    const res = await fetch('/api/families?region=' + encodeURIComponent(state.region));
+    if (!res.ok) throw new Error('Réponse ' + res.status);
+    const data = await res.json();
+    if (!data.families.length) {
+      showError(el.familyError, 'Aucune famille avec assez d’espèces dans cette région.');
+      return;
+    }
+    data.families.forEach((f) => {
+      el.families.appendChild(listButton(f.label, `${f.count} espèces`, () => chooseFamily(f.family, f.label)));
+    });
+  } catch (err) {
+    showError(el.familyError, 'Impossible de charger les familles. Réessaie.');
   }
 }
 
@@ -136,16 +159,37 @@ function chooseRegion(region, displayLabel) {
 
 function chooseMode(mode) {
   state.mode = mode;
-  el.difficultySub.textContent = `${state.regionLabel} · ${MODE_FR[mode]}`;
-  showView('difficulty');
+  if (mode === 'especes') {
+    el.familySub.textContent = `Région : ${state.regionLabel}`;
+    showView('family');
+    loadFamilies();
+  } else {
+    el.difficultySub.textContent = `${state.regionLabel} · ${MODE_FR[mode]}`;
+    showView('difficulty');
+  }
+}
+
+function setScoreboardBoxes() {
+  el.streakBox.classList.toggle('hidden', state.mode === 'lives' || state.mode === 'timed');
+  el.livesBox.classList.toggle('hidden', state.mode !== 'lives');
+  el.timerBox.classList.toggle('hidden', state.mode !== 'timed');
 }
 
 function chooseDifficulty(difficulty) {
   state.difficulty = difficulty;
+  state.family = '';
   el.gameLabel.textContent = `(${state.regionLabel} · ${MODE_FR[state.mode]} · ${DIFFICULTY_FR[difficulty]})`;
-  el.streakBox.classList.toggle('hidden', state.mode !== 'classic');
-  el.livesBox.classList.toggle('hidden', state.mode !== 'lives');
-  el.timerBox.classList.toggle('hidden', state.mode !== 'timed');
+  setScoreboardBoxes();
+  showView('game');
+  startRound();
+}
+
+function chooseFamily(family, label) {
+  state.family = family;
+  state.familyLabel = label;
+  state.difficulty = 'medium';
+  el.gameLabel.textContent = `(${state.regionLabel} · ${label})`;
+  setScoreboardBoxes();
   showView('game');
   startRound();
 }
@@ -195,8 +239,8 @@ function endTimed() {
 function goBack() {
   if (state.view === 'game') {
     clearTimers();
-    showView('difficulty');
-  } else if (state.view === 'difficulty') {
+    showView(state.mode === 'especes' ? 'family' : 'difficulty');
+  } else if (state.view === 'difficulty' || state.view === 'family') {
     showView('mode');
   } else if (state.view === 'mode') {
     showView('region');
@@ -239,8 +283,11 @@ async function loadQuestion() {
   state.locked = false;
 
   try {
-    const url = '/api/quiz?region=' + encodeURIComponent(state.region) +
+    let url = '/api/quiz?region=' + encodeURIComponent(state.region) +
       '&difficulty=' + encodeURIComponent(state.difficulty);
+    if (state.mode === 'especes' && state.family) {
+      url += '&family=' + encodeURIComponent(state.family);
+    }
     const res = await fetch(url);
     if (!res.ok) throw new Error('Réponse ' + res.status);
     const q = await res.json();

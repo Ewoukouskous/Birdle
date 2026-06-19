@@ -88,7 +88,20 @@
           <span class="block font-semibold text-stone-100">⏱️ Contre-la-montre</span>
           <span class="mt-0.5 block text-sm text-stone-400">Un maximum d'oiseaux en 60 secondes.</span>
         </button>
+        <button data-mode="especes"
+          class="mode-btn rounded-2xl border border-stone-700 bg-stone-800 px-4 py-4 text-left transition hover:border-moss-400 hover:bg-stone-700 focus:outline-none focus:ring-2 focus:ring-moss-400">
+          <span class="block font-semibold text-stone-100">🦜 Par familles</span>
+          <span class="mt-0.5 block text-sm text-stone-400">Choisis une famille d'oiseaux et révise ses espèces.</span>
+        </button>
       </div>
+    </section>
+
+    <section id="family-view" class="hidden min-h-0 flex-1 flex-col">
+      <p class="mb-1 shrink-0 text-lg font-semibold text-stone-100">Choisis une famille</p>
+      <p id="family-sub" class="mb-4 shrink-0 text-sm text-stone-400"></p>
+      <div id="families" class="grid min-h-0 flex-1 grid-cols-1 content-start gap-2 overflow-y-auto sm:grid-cols-2"></div>
+      <div id="family-error"
+        class="mt-3 hidden shrink-0 rounded-2xl bg-red-950/60 px-4 py-3 text-sm text-red-300 ring-1 ring-red-900"></div>
     </section>
 
     <section id="difficulty-view" class="hidden min-h-0 flex-1 flex-col">
