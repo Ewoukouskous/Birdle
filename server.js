@@ -8,9 +8,6 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// ---------------------------------------------------------------------------
-// Configuration
-// ---------------------------------------------------------------------------
 const API_KEY = process.env.NUTHATCH_API_KEY;
 const PORT = Number(process.env.PORT) || 3000;
 const REGION_FILTER = (process.env.REGION_FILTER || 'europe').toLowerCase().trim();
@@ -23,12 +20,9 @@ if (!API_KEY) {
   process.exit(1);
 }
 
-// ---------------------------------------------------------------------------
-// Cache des oiseaux (en mémoire) — la clé API ne quitte jamais le serveur.
-// ---------------------------------------------------------------------------
-let birdPool = [];      // oiseaux filtrés (région + image)
-let lastFetch = 0;      // timestamp du dernier chargement réussi
-let refreshing = null;  // promesse en cours, évite les chargements concurrents
+let birdPool = [];
+let lastFetch = 0;
+let refreshing = null;
 
 async function fetchAllBirds() {
   const out = [];
@@ -42,14 +36,11 @@ async function fetchAllBirds() {
     const data = await res.json();
     const entities = Array.isArray(data.entities) ? data.entities : [];
     out.push(...entities);
-    if (entities.length < pageSize) break; // dernière page
+    if (entities.length < pageSize) break;
   }
   return out;
 }
 
-// Récupère les noms vernaculaires français via Wikidata (P225 = nom de taxon),
-// en une requête SPARQL groupée par lots. Aucune clé requise. En cas d'échec,
-// on retombera simplement sur le nom anglais.
 async function fetchFrenchNames(sciNames) {
   const map = new Map();
   const unique = [...new Set(sciNames.filter(Boolean))];
@@ -94,7 +85,6 @@ async function refreshPool() {
   const filtered = all.filter(
     (b) => matchesRegion(b) && Array.isArray(b.images) && b.images.length > 0 && b.name,
   );
-  // On déduplique par nom pour éviter les doublons dans les propositions.
   const seen = new Set();
   const unique = filtered.filter((b) => {
     if (seen.has(b.name)) return false;
@@ -112,7 +102,6 @@ async function refreshPool() {
     image: b.images[0],
   }));
 
-  // Traduction française (nom scientifique → nom FR), fallback sur l'anglais.
   const frMap = await fetchFrenchNames(pool.map((b) => b.sciName));
   let translated = 0;
   pool.forEach((b) => {
@@ -125,7 +114,7 @@ async function refreshPool() {
   lastFetch = Date.now();
   console.log(
     `[birdle] Pool chargé : ${birdPool.length} oiseaux (filtre "${REGION_FILTER}"), ` +
-      `${translated} traduits en français.`,
+    `${translated} traduits en français.`,
   );
 }
 
@@ -138,7 +127,6 @@ async function ensurePool() {
   await refreshing;
 }
 
-// Tirage aléatoire de n éléments distincts (Fisher–Yates partiel).
 function sample(arr, n) {
   const copy = arr.slice();
   const res = [];
@@ -152,7 +140,6 @@ function sample(arr, n) {
 function buildQuestion() {
   const [correct, ...decoys] = sample(birdPool, CHOICES);
   const options = [correct, ...decoys];
-  // Mélange des positions.
   for (let i = options.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [options[i], options[j]] = [options[j], options[i]];
@@ -170,14 +157,10 @@ function buildQuestion() {
   };
 }
 
-// ---------------------------------------------------------------------------
-// App Express
-// ---------------------------------------------------------------------------
 const app = express();
 app.disable('x-powered-by');
-app.set('trust proxy', 1); // utile derrière un reverse-proxy / Docker
+app.set('trust proxy', 1);
 
-// En-têtes de sécurité + CSP. Tailwind est chargé via le CDN officiel.
 app.use(
   helmet({
     contentSecurityPolicy: {
@@ -186,7 +169,7 @@ app.use(
         scriptSrc: ["'self'", 'https://cdn.tailwindcss.com', "'unsafe-eval'"],
         styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
         fontSrc: ["'self'", 'https://fonts.gstatic.com'],
-        imgSrc: ["'self'", 'data:', 'https:'], // photos d'oiseaux hébergées sur divers CDN
+        imgSrc: ["'self'", 'data:', 'https:'],
         connectSrc: ["'self'"],
         objectSrc: ["'none'"],
         baseUri: ["'self'"],
@@ -198,7 +181,6 @@ app.use(
 );
 app.use(compression());
 
-// Limite de débit sur l'API (anti-abus + protège le quota Nuthatch).
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 60,
@@ -207,12 +189,10 @@ const apiLimiter = rateLimit({
 });
 app.use('/api', apiLimiter);
 
-// Santé
 app.get('/api/health', (req, res) => {
   res.json({ ok: true, pool: birdPool.length, lastFetch });
 });
 
-// Une question de quiz
 app.get('/api/quiz', async (req, res) => {
   try {
     await ensurePool();
@@ -224,11 +204,9 @@ app.get('/api/quiz', async (req, res) => {
   }
 });
 
-// Frontend statique
 app.use(express.static(path.join(__dirname, 'public'), { maxAge: '1h' }));
 
 app.listen(PORT, () => {
   console.log(`[birdle] En écoute sur http://localhost:${PORT}`);
-  // Préchargement du pool (sans bloquer le démarrage).
   ensurePool().catch((e) => console.error('[birdle] préchargement échoué :', e.message));
 });

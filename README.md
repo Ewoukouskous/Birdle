@@ -1,91 +1,213 @@
-# 🐦 Birdle
+# 🐦 Birdle 
 
-Mini-jeu pour apprendre à reconnaître les oiseaux : une photo, quatre noms, devine le bon.
-Données et images fournies par l'[API Nuthatch](https://nuthatch.lastelm.software/).
+A small web game to learn birds: look at a photo, pick the right name out of four.
 
-Stack : **Node + Express** (backend proxy) · **HTML + Tailwind + JS vanilla** (frontend) · **Docker**.
+## 📖 Table of Contents
 
----
+- [🤔 Project Presentation](#-project-presentation)
+- [🛠️ Prerequisites](#️-prerequisites)
+- [🚀 Installation and Startup](#-installation-and-startup)
+  - [🌍 Global Startup (Docker)](#-global-startup-docker)
+  - [🧰 Local Startup (Dev)](#-local-startup-dev)
+- [🎮 How the Game Works](#-how-the-game-works)
+- [🔐 Environment Variables (.env)](#-environment-variables-env)
+- [🐳 Docker Architecture and Security (Hardening)](#-docker-architecture-and-security-hardening)
+  - [📦 Services](#-services)
+  - [🛡️ Applied Hardening](#️-applied-hardening)
+- [🗂️ Repository Structure](#️-repository-structure)
+- [🌐 API Endpoints](#-api-endpoints)
+- [📎 Useful Commands](#-useful-commands)
+- [🧭 Roadmap](#-roadmap)
+- [👤 Author](#-author)
+- [🪢 Appendix](#-appendix)
 
-## ⚠️ Sécurité — à lire en premier
+## 🤔 Project Presentation
 
-La clé API a été saisie dans une conversation : **considère-la comme compromise**.
-1. Régénère une clé sur https://nuthatch.lastelm.software/getKey.html
-2. Remplace la valeur dans `.env`
+**Birdle** is a simple web app to learn how to recognize birds. The game shows a bird
+photo and four names; you pick the right one. It keeps a score and a streak.
 
-La clé vit **uniquement côté serveur** (fichier `.env`, jamais committé grâce à `.gitignore`).
-Le navigateur ne parle qu'à `/api/...` ; il ne voit jamais la clé ni l'URL de Nuthatch.
+For now it focuses on **Western European** birds (this is configurable), with names shown
+**in French** plus the **scientific (Latin)** name below.
 
----
+The project has two parts running in **one container**:
 
-## Démarrage
+- **Frontend**: static `HTML · Tailwind CSS · vanilla JavaScript`, served by the same Node server.
+- **Backend**: a small `Node · Express` server that acts as a **secure proxy** to the
+  [Nuthatch API](https://nuthatch.lastelm.software/). It also fetches French names from
+  **Wikidata** and caches everything in memory.
 
-### En local (Node ≥ 20)
+**Why a backend?** Two reasons:
+
+1. The **API key stays on the server** and is never sent to the browser.
+2. The server **caches the birds** at startup, so playing a round makes **zero** extra
+   calls to Nuthatch, this protects the API quota (500 requests/hour).
+
+The browser only talks to the local `/api/*` routes; it never sees the key or the
+Nuthatch/Wikidata URLs.
+
+## 🛠️ Prerequisites
+
+- Git
+- Docker + Docker Compose **(recommended)**
+- *or* Node.js ≥ 20 for local development
+
+## 🚀 Installation and Startup
+
+Clone the repository, then move into it:
 
 ```bash
-cp .env.example .env   # puis renseigne NUTHATCH_API_KEY (déjà fait si tu utilises le .env fourni)
-npm install
-npm start
+git clone <your-repo-url> birdle
+cd birdle
 ```
 
-Ouvre http://localhost:3000
+### 🌍 Global Startup (Docker)
 
-### Avec Docker
+From the project root:
+
+```bash
+cp .env.example .env      # then fill in NUTHATCH_API_KEY
+docker compose up --build
+```
+
+| Service | Container | URL                          |
+|---------|-----------|------------------------------|
+| App     | `birdle`  | http://localhost:3000        |
+| Health  | `birdle`  | http://localhost:3000/api/health |
+
+### 🧰 Local Startup (Dev)
+
+```bash
+cp .env.example .env      # then fill in NUTHATCH_API_KEY
+npm install
+npm start                 # or: npm run dev  (auto-reload)
+```
+
+Then open http://localhost:3000
+
+## 🎮 How the Game Works
+
+On startup, the server:
+
+1. Downloads the full list of birds **that have a photo** from Nuthatch.
+2. Keeps only those whose region matches `REGION_FILTER` (default `europe`).
+3. Asks **Wikidata** (one grouped SPARQL query, no key needed) for the **French name** of
+   each bird, using its scientific name as the key.
+4. Caches the result in memory and refreshes it every `CACHE_TTL_HOURS`.
+
+Each call to `/api/quiz` then picks one random bird + three decoys, shuffles them, and
+returns the photo, the four French names (with their Latin name), and the answer. If a
+bird has no known French name, the app falls back to the English name.
+
+## 🔐 Environment Variables (.env)
+
+The `.env` file holds your secrets and is **not** versioned (`.env.example` is the template).
+
+| Variable           | Default                 | Role                                                        |
+|--------------------|-------------------------|-------------------------------------------------------------|
+| `NUTHATCH_API_KEY` |                        | Your Nuthatch API key (**required**)                        |
+| `PORT`             | `3000`                  | Port the server listens on                                  |
+| `REGION_FILTER`    | `europe`                | Keep only birds whose region contains this text (lowercase) |
+| `CACHE_TTL_HOURS`  | `12`                    | How long the bird cache lives before a refresh              |
+
+> ⚠️ **Security note:** if your API key ever leaks (for example, pasted in a chat or a
+> commit), treat it as compromised and **generate a new one** at
+> https://nuthatch.lastelm.software/getKey.html
+
+## 🐳 Docker Architecture and Security (Hardening)
+
+### 📦 Services
+
+Defined in `docker-compose.yml`:
+
+- **birdle**: `node:20-alpine`, multi-step-friendly build. It installs only production
+  dependencies, serves the static frontend on port `80`→`3000`, and exposes the `/api/*`
+  proxy. A `HEALTHCHECK` hits `/api/health`.
+
+There is no database: the bird data lives in memory and comes from the Nuthatch API.
+
+### 🛡️ Applied Hardening
+
+- **API key kept server-side** : never sent to the browser.
+- **`helmet`** : security headers + a Content-Security-Policy.
+- **`express-rate-limit`** : 60 requests/minute per IP on `/api`.
+- **Non-root container** : runs as the built-in `node` user.
+- **Locked-down container** : `read_only` filesystem, `no-new-privileges`,
+  `cap_drop: ALL`, a `tmpfs` for `/tmp`, plus memory and PID limits.
+- **`.env` not committed** : excluded from Git and from the Docker build context.
+- **Healthcheck** : Compose knows when the app is actually ready.
+
+> Note on CSP: Tailwind is loaded from its official CDN (`cdn.tailwindcss.com`), which
+> requires `'unsafe-eval'` in `script-src`. For a stricter CSP in production, replace the
+> CDN with a pre-built Tailwind stylesheet served as a static file.
+
+## 🗂️ Repository Structure
+
+```
+birdle/
+|-- .env.example
+|-- .gitignore
+|-- .dockerignore
+|-- Dockerfile
+|-- docker-compose.yml
+|-- package.json
+|-- server.js          # Express backend: Nuthatch proxy + cache + Wikidata translation
+|-- README.md
+`-- public/            # static frontend (served by the same server)
+    |-- index.html     # game page (Tailwind, dark theme, no-scroll layout)
+    `-- app.js         # game logic (fetch quiz, score, streak, feedback)
+```
+
+## 🌐 API Endpoints
+
+| Method | Route          | Role                                                   |
+|--------|----------------|--------------------------------------------------------|
+| GET    | `/`            | The static game page                                   |
+| GET    | `/api/quiz`    | One question: photo, 4 options (FR + Latin), answer    |
+| GET    | `/api/health`  | Status + number of birds currently cached              |
+
+## 📎 Useful Commands
+
+Start the full stack:
 
 ```bash
 docker compose up --build
 ```
 
-Ouvre http://localhost:3000
+Stop the app:
 
----
+```bash
+docker compose down
+```
 
-## Comment ça marche
+Rebuild after a change:
 
-Au démarrage, le serveur télécharge la liste des oiseaux avec photo, ne garde que ceux
-dont la région contient `REGION_FILTER` (par défaut `europe`), puis met le tout en cache
-mémoire (rafraîchi toutes les `CACHE_TTL_HOURS`). Chaque appel à `/api/quiz` tire un oiseau
-au hasard + 3 leurres, sans recontacter Nuthatch — ça protège ton quota (500 req/h).
+```bash
+docker compose up -d --build
+```
 
-Les noms sont affichés **en français** : au chargement du pool, le serveur interroge **Wikidata** (une requête SPARQL groupée par nom scientifique, sans clé) pour récupérer le nom vernaculaire français, mis en cache avec le reste. Le nom scientifique latin est affiché en sous-titre. Si un oiseau n'a pas de nom français connu, on retombe sur l'anglais.
+Follow the logs:
 
-### Endpoints
+```bash
+docker compose logs -f birdle
+```
 
-| Méthode | Route          | Rôle                                            |
-|---------|----------------|-------------------------------------------------|
-| GET     | `/api/quiz`    | Une question : image, 4 propositions, réponse   |
-| GET     | `/api/health`  | État + taille du pool                           |
+Run locally without Docker:
 
----
+```bash
+npm install && npm start
+```
 
-## Configuration (`.env`)
+## 🧭 Roadmap
 
-| Variable           | Défaut    | Description                                            |
-|--------------------|-----------|--------------------------------------------------------|
-| `NUTHATCH_API_KEY` | —         | Ta clé Nuthatch (obligatoire)                          |
-| `PORT`             | `3000`    | Port d'écoute                                          |
-| `REGION_FILTER`    | `europe`  | Sous-chaîne de région à conserver (insensible casse)   |
-| `CACHE_TTL_HOURS`  | `12`      | Durée de vie du cache des oiseaux                      |
+- More regions / families and difficulty levels.
+- A bird detail page (scientific name, conservation status, region already returned by the API).
+- Timed mode, high scores, and more.
 
-Pour ajouter d'autres régions plus tard : `REGION_FILTER=` (vide) garde **tous** les oiseaux,
-ou mets `north america`, etc.
+## 👤 Author
 
----
+**LEFEBVRE Nino** : design & development.
 
-## Mesures de sécurité en place
+## 🪢 Appendix
 
-- Clé API confinée au backend (proxy), jamais exposée au client.
-- `helmet` : en-têtes de sécurité + Content-Security-Policy.
-- `express-rate-limit` : 60 req/min/IP sur `/api`.
-- Conteneur durci : utilisateur non-root, `read_only`, `no-new-privileges`, `cap_drop: ALL`, limites mémoire/PID.
-- `.env` exclu de Git et du contexte Docker.
-
-> Note CSP : Tailwind est chargé via son CDN officiel (`cdn.tailwindcss.com`), ce qui impose
-> `'unsafe-eval'` dans `script-src`. Pour une CSP plus stricte en production, remplace le CDN
-> par un build Tailwind précompilé servi en statique.
-
-## La suite (idées)
-
-- Plus de régions / familles, niveaux de difficulté.
-- Indices (nom scientifique, statut de conservation, déjà renvoyés par l'API).
-- Mode chronométré, classement, son du chant de l'oiseau.
+- 🐦 Bird data & photos — [Nuthatch API](https://nuthatch.lastelm.software/)
+- 🌍 French names — [Wikidata](https://www.wikidata.org/) (SPARQL query service)
